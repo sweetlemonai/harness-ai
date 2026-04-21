@@ -1,0 +1,2 @@
+dist/cli.js init --framework nextjs
+--framework react

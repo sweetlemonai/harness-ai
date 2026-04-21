@@ -1,0 +1,60 @@
+---
+standard: tech-stack
+version: 1.0
+updated: <YYYY-MM-DD>
+---
+
+# Standard: tech-stack
+
+## How to use this file
+- Source of truth for all technology decisions
+- Every agent reads this before installing any package
+- Any new dependency must be added here before use
+
+## Frontend
+- Framework: <e.g. Next.js 15 App Router>
+- Styling: <e.g. Tailwind CSS v4 + shadcn/ui>
+- State management: <e.g. React state, URL state, Server Actions>
+- Routing: <e.g. App Router file-based>
+- Forms: <e.g. React Hook Form + Zod>
+- Testing: <e.g. Vitest + @testing-library/react + Playwright>
+- Build tool: <e.g. Next.js built-in (Turbopack)>
+
+## Backend
+- Runtime: <e.g. Node 20 via Next.js>
+- Framework: <e.g. Next.js Route Handlers + Server Actions>
+- ORM: <e.g. Drizzle>
+- Authentication: <e.g. Auth.js v5>
+- API style: <e.g. Server Actions for mutations, Route Handlers for reads>
+- Testing: <e.g. Vitest>
+
+## Database
+- Primary database: <e.g. PostgreSQL via Neon>
+- Caching: <e.g. Next.js cache + React cache>
+- Search: <e.g. Postgres full-text, or skip>
+- File storage: <e.g. Vercel Blob, or skip>
+
+## DevOps / infrastructure
+- Hosting: <e.g. Vercel>
+- CI/CD: <e.g. Vercel + GitHub Actions>
+- Environment management: <e.g. .env.local + Vercel env vars>
+- Monitoring: <e.g. Vercel Analytics + PostHog>
+- Error tracking: <e.g. Sentry, or skip>
+
+## Approved packages
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+|         |         |         |
+
+## Forbidden packages
+
+| Package | Reason |
+|---------|--------|
+|         |        |
+
+## Adding a new dependency
+1. Check if existing approved package solves the problem first
+2. Evaluate: bundle size, maintenance status, license, security
+3. Add to approved packages table with version and purpose
+4. Update this file before using in code

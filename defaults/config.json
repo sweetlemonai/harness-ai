@@ -1,0 +1,44 @@
+{
+  "retries": {
+    "agent": 2,
+    "gate": 3,
+    "e2e": 2
+  },
+  "timeouts": {
+    "buildAgentMs": 600000,
+    "otherAgentMs": 300000,
+    "gateMs": 120000,
+    "gracefulShutdownMs": 5000
+  },
+  "context": {
+    "maxFiles": 20,
+    "maxTokens": 30000
+  },
+  "agents": {
+    "maxPromptTokens": 60000
+  },
+  "gates": {
+    "visualDiffThreshold": 0.05,
+    "visualDiffBlock": true,
+    "minAcceptanceCriteria": 3
+  },
+  "retention": {
+    "keepRunLogsForDays": 7,
+    "keepRunFolderForDays": 30
+  },
+  "analytics": {
+    "rotationStrategy": "monthly"
+  },
+  "coreLibraries": [],
+  "requirements": {
+    "minNodeVersion": "20.0.0",
+    "minClaudeCodeVersion": "2.1.32"
+  },
+  "git": {
+    "push": false,
+    "createPR": false
+  },
+  "phases": {
+    "e2e": true
+  }
+}

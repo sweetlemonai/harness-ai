@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/config.schema.json",
+  "title": "HarnessConfig",
+  "description": "Runtime configuration for the Harness pipeline. Loaded from config.json and optionally overlaid with config.local.json. Validated at startup — unknown fields are a fatal error.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "retries",
+    "timeouts",
+    "context",
+    "agents",
+    "gates",
+    "retention",
+    "analytics",
+    "coreLibraries",
+    "requirements",
+    "git",
+    "phases"
+  ],
+  "properties": {
+    "retries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "gate", "e2e"],
+      "properties": {
+        "agent": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "gate": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "e2e": { "type": "integer", "minimum": 0, "maximum": 10 }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildAgentMs", "otherAgentMs", "gateMs", "gracefulShutdownMs"],
+      "properties": {
+        "buildAgentMs": { "type": "integer", "minimum": 1000 },
+        "otherAgentMs": { "type": "integer", "minimum": 1000 },
+        "gateMs": { "type": "integer", "minimum": 1000 },
+        "gracefulShutdownMs": { "type": "integer", "minimum": 100 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxFiles", "maxTokens"],
+      "properties": {
+        "maxFiles": { "type": "integer", "minimum": 1 },
+        "maxTokens": { "type": "integer", "minimum": 100 }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxPromptTokens"],
+      "properties": {
+        "maxPromptTokens": { "type": "integer", "minimum": 1000 }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visualDiffThreshold", "visualDiffBlock", "minAcceptanceCriteria"],
+      "properties": {
+        "visualDiffThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "visualDiffBlock": { "type": "boolean" },
+        "minAcceptanceCriteria": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keepRunLogsForDays", "keepRunFolderForDays"],
+      "properties": {
+        "keepRunLogsForDays": { "type": "integer", "minimum": 1 },
+        "keepRunFolderForDays": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "analytics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rotationStrategy"],
+      "properties": {
+        "rotationStrategy": { "type": "string", "enum": ["monthly"] }
+      }
+    },
+    "coreLibraries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "docs"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "docs": { "type": "string", "minLength": 1, "format": "uri" }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minNodeVersion", "minClaudeCodeVersion"],
+      "properties": {
+        "minNodeVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "minClaudeCodeVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["push", "createPR"],
+      "properties": {
+        "push": { "type": "boolean" },
+        "createPR": { "type": "boolean" }
+      }
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["e2e"],
+      "properties": {
+        "e2e": { "type": "boolean" }
+      }
+    }
+  }
+}

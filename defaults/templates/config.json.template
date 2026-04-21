@@ -1,0 +1,4 @@
+{
+  "_comment": "This file is overlaid on top of package defaults. Only include fields you want to change from the defaults. Keys starting with '_' are stripped before validation.",
+  "coreLibraries": []
+}

@@ -1,0 +1,56 @@
+# <Project Name>
+
+## What This Is
+
+<One-paragraph description of what this project is and what you're building.>
+
+This repo uses the AI harness (`@sweetlemonai/harness-ai`) to deliver
+features. The harness drives Claude Code agents through a pipeline
+and enforces quality gates. When working inside this repo, follow the
+patterns documented in the context files below — they are the source
+of truth for how code should be structured.
+
+---
+
+## Required reading before writing any code
+
+Read these files in full before touching any source file:
+
+1. `.claude/standards/tech-stack.md` — the locked list of approved packages.
+2. `.claude/standards/coding.md` — naming, structure, patterns.
+3. `.claude/standards/testing.md` — test requirements for every task.
+4. `.claude/context/<project-specific>.md` — domain knowledge (add files as needed).
+
+---
+
+## Tech Stack
+
+See `.claude/standards/tech-stack.md` for the canonical list.
+
+---
+
+## Project Structure
+
+```
+src/
+  <describe your directory layout here>
+```
+
+---
+
+## Non-negotiable rules
+
+<List any rules that MUST be followed.>
+
+- <example: TypeScript strict mode — no any, ever>
+- <example: no useMemo / useCallback — React 19 compiler handles it>
+- <example: all data fetching goes through hooks in src/hooks/>
+
+---
+
+## What not to do
+
+<List anti-patterns the agents must avoid.>
+
+- <example: Do not write API clients inline in components>
+- <example: Do not use class components>

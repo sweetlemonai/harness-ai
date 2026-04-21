@@ -1,0 +1,12 @@
+src/
+tsconfig.json
+tsup.config.ts
+.github/
+docs/
+*.log
+test-results/
+analytics/
+runs/
+tasks/
+IMPLEMENTATION_PLAN.md
+.DS_Store

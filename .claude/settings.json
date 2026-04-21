@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "LS(*)",
+      "Task(*)",
+      "WebFetch(*)",
+      "WebSearch(*)"
+    ]
+  },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Working", "Processing", "Thinking", "Analyzing",
+      "Computing", "Loading", "Running", "Checking",
+      "Reading", "Writing", "Searching", "Reviewing",
+      "Executing", "Scanning", "Parsing", "Building",
+      "Fetching", "Calculating", "Preparing", "Updating"
+    ]
+  }
+}
