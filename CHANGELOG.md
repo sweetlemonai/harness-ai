@@ -3,6 +3,13 @@
 All notable changes to `@sweetlemonai/harness-ai` are recorded here.
 This project follows Semantic Versioning.
 
+## 0.3.1 — 2026-04-21
+
+### Fixed
+- `harness --version` reported `0.1.0` (stale hardcoded value) instead
+  of the installed package version. Now reads from `package.json` at
+  startup so it stays in sync with every release.
+
 ## 0.3.0 — 2026-04-21
 
 ### Added

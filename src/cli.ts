@@ -2,6 +2,7 @@
 // pipeline logic — every command module owns its own argument validation
 // and calls into pipeline/runner.ts when it needs to run phases.
 
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { PHASE_IDS, type PhaseId } from './types.js';
 import { runCommand, type RunCommandArgs } from './commands/run.js';
@@ -10,6 +11,24 @@ import { initCommand } from './commands/init.js';
 import { statusCommand } from './commands/status.js';
 import { debugCommand } from './commands/debug.js';
 import { parseFromTarget, resolveTaskRef, type FromTarget } from './lib/tasks.js';
+
+// Resolve version from the shipped package.json so --version stays in
+// sync with what npm published. Works in both bundled
+// (`dist/cli.js` → `../package.json` = package root) and tsx-dev
+// (`src/cli.ts` → `../package.json` = repo root) layouts.
+function readPackageVersion(): string {
+  try {
+    const url = new URL('../package.json', import.meta.url);
+    const raw = readFileSync(url, 'utf8');
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    if (typeof parsed.version === 'string' && parsed.version.length > 0) {
+      return parsed.version;
+    }
+  } catch {
+    // fall through
+  }
+  return '0.0.0';
+}
 
 function notImplemented(name: string): () => never {
   return () => {
@@ -47,7 +66,7 @@ async function main(): Promise<void> {
   program
     .name('harness')
     .description('AI engineering harness — ticket to reviewed branch')
-    .version('0.1.0')
+    .version(readPackageVersion())
     .showHelpAfterError();
 
   program
