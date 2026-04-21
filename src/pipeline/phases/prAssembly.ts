@@ -207,23 +207,30 @@ function buildPrompt(
 
 function summarizeBuild(build: BuildOutputs | undefined): string {
   if (!build) return '(build phase did not run — E2E-only task)';
+  // Every array field is defaulted — `outputs/build.json` may have been
+  // written by a prior harness version that predates a given field
+  // (e.g. `autoFixes` added in 0.3.0). Readers tolerate historical
+  // shapes; writers stay current.
+  const filesWritten = build.filesWritten ?? [];
+  const noTouchViolations = build.noTouchViolations ?? [];
+  const autoFixes = build.autoFixes ?? [];
   const lines = [
-    `files written: ${build.filesWritten.length}`,
-    ...build.filesWritten.map((p) => `  - ${p}`),
+    `files written: ${filesWritten.length}`,
+    ...filesWritten.map((p) => `  - ${p}`),
   ];
-  if (build.noTouchViolations.length > 0) {
+  if (noTouchViolations.length > 0) {
     lines.push(`no-touch observations:`);
-    for (const v of build.noTouchViolations) {
+    for (const v of noTouchViolations) {
       lines.push(`  - ${v.path} (${v.kind}): ${v.description}`);
     }
   }
-  if (build.autoFixes.length > 0) {
+  if (autoFixes.length > 0) {
     lines.push(`automated fixes applied:`);
-    for (const f of build.autoFixes) {
+    for (const f of autoFixes) {
       lines.push(`  - ${f.file} (${f.kind}: ${f.symbol}, transform ${f.transform})`);
     }
   }
-  lines.push(`correction attempts: ${build.correctionAttempts}`);
+  lines.push(`correction attempts: ${build.correctionAttempts ?? 0}`);
   return lines.join('\n');
 }
 
@@ -240,35 +247,39 @@ function summarizeHardGates(hg: HardGateOutputs | undefined): string {
     `storybook:  ${gateLine(hg.storybook)}`,
   ];
   if (hg.visualDiff) {
+    const entries = hg.visualDiff.entries ?? [];
     const ok = hg.visualDiff.passed ? 'PASS' : 'FAIL';
     lines.push(
-      `visualDiff: ${ok} (${hg.visualDiff.entries.length} stories, threshold=${hg.visualDiff.threshold})`,
+      `visualDiff: ${ok} (${entries.length} stories, threshold=${hg.visualDiff.threshold})`,
     );
   } else {
     lines.push('visualDiff: skipped');
   }
-  lines.push(`correction attempts: ${hg.correctionAttempts}`);
+  lines.push(`correction attempts: ${hg.correctionAttempts ?? 0}`);
   return lines.join('\n');
 }
 
 function gateLine(
-  g: { passed: boolean; durationMs: number; errors: readonly string[] } | null | undefined,
+  g: { passed: boolean; durationMs: number; errors?: readonly string[] } | null | undefined,
 ): string {
   if (!g) return 'skipped';
+  const errors = g.errors ?? [];
   const status = g.passed ? 'PASS' : 'FAIL';
-  const suffix = g.passed ? '' : ` — ${g.errors.length} error(s)`;
+  const suffix = g.passed ? '' : ` — ${errors.length} error(s)`;
   return `${status} (${g.durationMs}ms)${suffix}`;
 }
 
 function summarizeReconcile(r: ReconcileOutputs | undefined): string {
   if (!r) return 'skipped (no tests in this task)';
-  const base = `status: ${r.status} (fix attempts: ${r.fixAttempts})`;
-  if (r.issues.length === 0) return base;
-  const issues = r.issues
+  const fixAttempts = r.fixAttempts ?? 0;
+  const issues = r.issues ?? [];
+  const base = `status: ${r.status ?? 'UNKNOWN'} (fix attempts: ${fixAttempts})`;
+  if (issues.length === 0) return base;
+  const issueLines = issues
     .slice(0, 5)
     .map((i) => `  - [${i.kind}] ${i.specClause}: ${i.description}`)
     .join('\n');
-  return `${base}\n${issues}`;
+  return `${base}\n${issueLines}`;
 }
 
 function summarizeE2E(e: E2EOutputs | undefined): string {
@@ -334,7 +345,7 @@ function summarizeSoftGates(s: SoftGateOutputs | undefined): string {
       rows.push(`${name.padEnd(14)} (no report)`);
       continue;
     }
-    const counts = countBySeverity(report.findings);
+    const counts = countBySeverity(report.findings ?? []);
     rows.push(
       `${name.padEnd(14)} ${report.status} — high: ${counts.high}, medium: ${counts.medium}, low: ${counts.low}`,
     );
@@ -342,15 +353,16 @@ function summarizeSoftGates(s: SoftGateOutputs | undefined): string {
   return rows.join('\n');
 }
 
-function countBySeverity(findings: readonly { severity: string }[]): {
+function countBySeverity(findings: readonly { severity: string }[] | undefined): {
   high: number;
   medium: number;
   low: number;
 } {
+  const list = findings ?? [];
   return {
-    high: findings.filter((f) => f.severity === 'high').length,
-    medium: findings.filter((f) => f.severity === 'medium').length,
-    low: findings.filter((f) => f.severity === 'low').length,
+    high: list.filter((f) => f.severity === 'high').length,
+    medium: list.filter((f) => f.severity === 'medium').length,
+    low: list.filter((f) => f.severity === 'low').length,
   };
 }
 
@@ -364,7 +376,7 @@ function summarizeManifest(spec: SpecOutputs): {
   let test = 0;
   let story = 0;
   let noTouch = 0;
-  for (const e of spec.manifestEntries) {
+  for (const e of spec.manifestEntries ?? []) {
     if (e.action === 'no-touch') noTouch += 1;
     else if (e.kind === 'impl') impl += 1;
     else if (e.kind === 'test') test += 1;

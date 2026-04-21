@@ -3,6 +3,19 @@
 All notable changes to `@sweetlemonai/harness-ai` are recorded here.
 This project follows Semantic Versioning.
 
+## 0.3.2 — 2026-04-21
+
+### Fixed
+- prAssembly crashed with `Cannot read properties of undefined (reading
+  'length')` when resuming a run whose `outputs/build.json` predated
+  0.3.0 (no `autoFixes` field). prAssembly summarizers now tolerate
+  missing array fields on every phase output — the readers are lenient,
+  writers stay current.
+- Runner's unhandled-phase-error log now includes the full stack trace
+  in both `harness.log` (as a multi-line message) and `events.jsonl`
+  (as a `stack` field on the error event), so future crashes are
+  diagnosable without rerunning.
+
 ## 0.3.1 — 2026-04-21
 
 ### Fixed

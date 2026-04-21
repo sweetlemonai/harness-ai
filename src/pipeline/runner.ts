@@ -317,7 +317,14 @@ async function runLoop(
         return finalizeEscalation(ctx, state, err);
       }
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.logger.error(`phase ${phase.name}: unhandled error: ${msg}`);
+      const stack = err instanceof Error && typeof err.stack === 'string' ? err.stack : null;
+      // Include the full stack in harness.log (via the message, which is
+      // multi-line-safe) and as a structured `stack` field on the error
+      // event in events.jsonl so debug tooling can surface it.
+      const logMessage = stack
+        ? `phase ${phase.name}: unhandled error: ${msg}\n${stack}`
+        : `phase ${phase.name}: unhandled error: ${msg}`;
+      ctx.logger.error(logMessage, stack !== null ? { stack } : undefined);
       return finalizeFailure(ctx, state, phase.name, msg);
     }
     const durationMs = Date.now() - startedAt;
