@@ -66,6 +66,16 @@ Useful variants:
 - `harness-ai status` — project / task state overview.
 - `harness-ai debug <project>/<task> --run <runId>` — inspect prompts, outputs, logs for a past run.
 
+### `--from` shapes
+
+`--from` accepts three forms on both `ship` and `run`:
+
+- `--from <phase>` — single-task mode. Re-run the named task from `<phase>`. Example: `harness ship my-project/2-foo --resume --from build`.
+- `--from <task>` — project mode. Skip earlier tasks, start at `<task>` from its first incomplete phase, then continue with the rest. Example: `harness ship my-project --resume --from 2-foo` (numeric shorthand `--from 2` also works).
+- `--from <task>/<phase>` — project mode. Skip earlier tasks, resume `<task>` at `<phase>`, then continue. Example: `harness ship my-project --resume --from 2-foo/build`.
+
+A bare `--from <phase>` in project mode is ambiguous when the project has more than one task; the harness prints the three corrected syntaxes. It auto-scopes (with a warning) when the project has exactly one task.
+
 ## Resolution order for `.claude/` assets
 
 | Asset | Order |
@@ -84,7 +94,7 @@ Drop a file at `.claude/agents/spec.agent.md` in your repo to override the packa
 
 ```json
 {
-  "retries": { "agent": 3 },
+  "retries": { "agent": 3, "reconcile": 2 },
   "git": { "createPR": true }
 }
 ```
@@ -92,6 +102,13 @@ Drop a file at `.claude/agents/spec.agent.md` in your repo to override the packa
 Package defaults live at `node_modules/@sweetlemonai/harness-ai/defaults/config.json`. Schema is enforced by ajv — unknown keys fail validation. Keys starting with `_` are treated as comments and stripped before validation.
 
 `harness/config.local.json` overlays on top of `harness/config.json` and is gitignored — use it for machine-specific overrides.
+
+### Most commonly tuned knobs
+
+- `retries.agent` — how many times to retry a failed coding-agent invocation before escalating. Default 2.
+- `retries.gate` — how many auto-fix rounds the harness runs against hard-gate failures (tsc/eslint/vitest/storybook) before escalating. Default 3.
+- `retries.e2e` — how many times to retry failing Playwright specs before escalating. Default 2.
+- `retries.reconcile` — how many times to try fixing after the reconciliation agent reports a contradiction. Default 2. Set higher for flaky agents, lower (e.g. 0) to escalate immediately without any self-repair.
 
 ## Migrating from LemonHarness
 

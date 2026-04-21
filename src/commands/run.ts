@@ -38,6 +38,10 @@ import {
 } from '../types.js';
 import { loadConfig } from '../lib/config.js';
 import { createProjectPullRequest } from '../lib/projectPr.js';
+import {
+  resolveProjectTaskName as resolveProjectTaskNameTyped,
+  type FromTarget,
+} from '../lib/tasks.js';
 import { createLogger } from '../lib/logger.js';
 import { acquireLock, readLockIfExists, type LockHandle } from '../lib/lock.js';
 import {
@@ -83,7 +87,12 @@ export interface RunCommandArgs {
    * after mode dispatch.
    */
   readonly stopAfter?: string;
-  readonly from?: PhaseId;
+  /**
+   * Tagged union produced by `parseFromTarget`. Validation per mode
+   * happens inside `runSingleTask` / `runProjectMode` — the CLI parser
+   * cannot know which project the user is in.
+   */
+  readonly from?: FromTarget;
   readonly dryRun: boolean;
   readonly resume: boolean;
   /**
@@ -176,6 +185,22 @@ async function runSingleTask(
     stopAfterPhase = args.stopAfter as PhaseId;
   }
 
+  // --from in single-task mode only accepts a phase. Task-scoped shapes
+  // are rejected with a message pointing at project mode.
+  let fromPhase: PhaseId | undefined;
+  if (args.from !== undefined) {
+    if (args.from.kind === 'phase') {
+      fromPhase = args.from.phase;
+    } else {
+      process.stderr.write(
+        `run: --from <task> is not valid in single-task mode (you already specified the task). Either:\n` +
+          `  harness run ${taskRef.project} --resume --from ${args.from.kind === 'task-phase' ? `${args.from.task}/${args.from.phase}` : args.from.task}      (project mode)\n` +
+          `  harness run ${taskRef.project}/${taskRef.task} --resume --from <phase>\n`,
+      );
+      return 64;
+    }
+  }
+
   let paths;
   let config;
   try {
@@ -242,7 +267,7 @@ async function runSingleTask(
     patchParent: null,
     nonInteractive: args.nonInteractive,
     ...(stopAfterPhase !== undefined ? { stopAfter: stopAfterPhase } : {}),
-    ...(args.from !== undefined ? { resumeFrom: args.from } : {}),
+    ...(fromPhase !== undefined ? { resumeFrom: fromPhase } : {}),
     dryRun: args.dryRun,
   };
 
@@ -540,13 +565,6 @@ async function runProjectMode(
   project: string,
   args: RunCommandArgs,
 ): Promise<number> {
-  if (args.from !== undefined) {
-    process.stderr.write(
-      'run: --from is only valid in single-task mode.\n',
-    );
-    return 64;
-  }
-
   let paths;
   try {
     paths = resolveHarnessPaths();
@@ -574,6 +592,48 @@ async function runProjectMode(
       `run: ${project} has no task files (looked for <N>-<name>.md under ${projectDir})\n`,
     );
     return 64;
+  }
+
+  // Resolve --from to a concrete (task, phase?) pair. Project mode
+  // accepts task / task-phase. A bare phase auto-scopes only when the
+  // project has exactly one task; otherwise it's ambiguous and we
+  // print the correct syntax options.
+  let fromTargetTask: string | null = null;
+  let fromTargetPhase: PhaseId | undefined;
+  if (args.from !== undefined) {
+    const f = args.from;
+    if (f.kind === 'phase') {
+      if (allTasks.length === 1) {
+        const only = allTasks[0]!;
+        process.stderr.write(
+          `run: --from <phase> in project mode auto-scoped to the only task (${only}).\n`,
+        );
+        fromTargetTask = only;
+        fromTargetPhase = f.phase;
+      } else {
+        process.stderr.write(
+          `run: --from <phase> in project mode is ambiguous when the project has multiple tasks. Use one of:\n` +
+            `  harness run ${project} --resume --from <task>\n` +
+            `  harness run ${project} --resume --from <task>/${f.phase}\n` +
+            `  harness run ${project}/<task> --resume --from ${f.phase}\n`,
+        );
+        return 64;
+      }
+    } else {
+      const resolution = resolveProjectTaskNameTyped(project, f.task);
+      if (!resolution.ok) {
+        process.stderr.write(`run: ${resolution.message}\n`);
+        return 64;
+      }
+      if (!allTasks.includes(resolution.task)) {
+        process.stderr.write(
+          `run: --from task '${resolution.task}' is not part of ${project}. Known tasks: ${allTasks.join(', ')}\n`,
+        );
+        return 64;
+      }
+      fromTargetTask = resolution.task;
+      if (f.kind === 'task-phase') fromTargetPhase = f.phase;
+    }
   }
 
   // --stop-after in project mode must be a task id that exists in the project.
@@ -627,6 +687,19 @@ async function runProjectMode(
     }
   }
 
+  // --from <task>[/<phase>]: skip everything before the target task by
+  // marking earlier tasks as complete for dependency resolution, and
+  // force-re-run the target itself even if prior state said complete.
+  // Dependents run as normal after the target finishes.
+  if (fromTargetTask !== null) {
+    const targetIdx = allTasks.indexOf(fromTargetTask);
+    for (let i = 0; i < targetIdx; i += 1) {
+      completed.add(allTasks[i]!);
+    }
+    completed.delete(fromTargetTask);
+    parked.delete(fromTargetTask);
+  }
+
   if (args.dryRun) {
     return printWavePlan(project, graph, allTasks, completed, parked, stopAfterTask);
   }
@@ -675,16 +748,22 @@ async function runProjectMode(
     const taskStart = Date.now();
     // Build a single-task args object. Strip project-level --stop-after
     // (it refers to a task id and is meaningless inside one task's pipeline).
+    // When --from targets this task, resume its prior run dir and pass
+    // the phase through so the pipeline picks up mid-stream.
+    const isFromTarget = fromTargetTask !== null && nextTask === fromTargetTask;
     const perTaskArgs: RunCommandArgs = {
       task: `${project}/${nextTask}`,
       dryRun: false,
-      resume: false,
+      resume: isFromTarget,
       nonInteractive: args.nonInteractive,
       ship: args.ship === true,
       // Project ship opens ONE PR after every task completes — per-task
       // runs push their commits so the remote stays current, but skip PR
       // creation. createProjectPullRequest below handles the single PR.
       noCreatePR: args.ship === true,
+      ...(isFromTarget && fromTargetPhase !== undefined
+        ? { from: { kind: 'phase', phase: fromTargetPhase } }
+        : {}),
     };
     const code = await runSingleTask(`${project}/${nextTask}`, perTaskArgs);
     runDurations.set(nextTask, Date.now() - taskStart);

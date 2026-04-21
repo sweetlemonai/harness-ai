@@ -1,6 +1,6 @@
 {
   "name": "@sweetlemonai/harness-ai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AI engineering pipeline — ticket to reviewed branch, with quality gates.",
   "keywords": [
     "ai",

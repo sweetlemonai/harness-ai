@@ -43,6 +43,7 @@ export interface HarnessConfig {
     readonly agent: number;
     readonly gate: number;
     readonly e2e: number;
+    readonly reconcile: number;
   };
   readonly timeouts: {
     readonly buildAgentMs: number;
@@ -332,10 +333,22 @@ export interface ContextOutputs {
   readonly filesDropped: readonly { readonly path: string; readonly sizeBytes: number }[];
 }
 
+export const BUILD_AUTO_FIX_KINDS = ['double-export'] as const;
+export type BuildAutoFixKind = (typeof BUILD_AUTO_FIX_KINDS)[number];
+
+export interface BuildAutoFix {
+  readonly kind: BuildAutoFixKind;
+  readonly file: string;
+  readonly symbol: string;
+  /** Transform identifier — stable across runs so analytics can correlate. */
+  readonly transform: string;
+}
+
 export interface BuildOutputs {
   readonly filesWritten: readonly string[];
   readonly noTouchViolations: readonly NoTouchViolation[];
   readonly correctionAttempts: number;
+  readonly autoFixes: readonly BuildAutoFix[];
 }
 
 export interface ReconcileOutputs {
@@ -484,6 +497,8 @@ export const EVENT_TYPES = [
   'snapshot_taken',
   'lock_acquired',
   'lock_released',
+  'reconcile_fix_attempt',
+  'build_auto_fix',
   'info',
   'warn',
   'error',

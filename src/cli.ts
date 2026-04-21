@@ -9,7 +9,7 @@ import { shipCommand, type ShipCommandArgs } from './commands/ship.js';
 import { initCommand } from './commands/init.js';
 import { statusCommand } from './commands/status.js';
 import { debugCommand } from './commands/debug.js';
-import { resolveTaskRef } from './lib/tasks.js';
+import { parseFromTarget, resolveTaskRef, type FromTarget } from './lib/tasks.js';
 
 function notImplemented(name: string): () => never {
   return () => {
@@ -69,9 +69,9 @@ async function main(): Promise<void> {
       're-run task N from preflight (clears its prior run state)',
     )
     .option(
-      '--from <phase>',
-      're-run the escalated task starting at <phase>',
-      parsePhaseId,
+      '--from <target>',
+      're-run starting at <phase>, <task>, or <task>/<phase>',
+      parseFromTarget,
     )
     .option('--dry-run', 'print the plan and exit without running')
     .option('--non-interactive', 'never prompt; warn and continue on mismatch')
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
           resume?: boolean;
           skip?: string;
           restart?: string;
-          from?: PhaseId;
+          from?: FromTarget;
           dryRun?: boolean;
           nonInteractive?: boolean;
           force?: boolean;
@@ -114,7 +114,11 @@ async function main(): Promise<void> {
       '--stop-after <phaseOrTask>',
       'single-task: stop after the named phase. project: stop after the named task.',
     )
-    .option('--from <phase>', 'single-task only: force start from the named phase', parsePhaseId)
+    .option(
+      '--from <target>',
+      'force start from <phase> (single-task), <task>, or <task>/<phase> (project mode)',
+      parseFromTarget,
+    )
     .option('--dry-run', 'print the plan and exit without running')
     .option(
       '--resume',
@@ -130,7 +134,7 @@ async function main(): Promise<void> {
         task: string | undefined,
         opts: {
           stopAfter?: string;
-          from?: PhaseId;
+          from?: FromTarget;
           dryRun?: boolean;
           resume?: boolean;
           force?: boolean;
@@ -155,7 +159,11 @@ async function main(): Promise<void> {
   program
     .command('resume <task>')
     .description('Alias for `run <task> --resume`. Takes the same flags as run.')
-    .option('--from <phase>', 'force start from the named phase', parsePhaseId)
+    .option(
+      '--from <target>',
+      'force start from <phase>, <task>, or <task>/<phase>',
+      parseFromTarget,
+    )
     .option('--stop-after <phase>', 'stop after the named phase completes')
     .option('--dry-run', 'print the phase plan and exit without running')
     .option('--non-interactive', 'never prompt; warn and continue on mismatch')
@@ -163,7 +171,7 @@ async function main(): Promise<void> {
       async (
         task: string,
         opts: {
-          from?: PhaseId;
+          from?: FromTarget;
           stopAfter?: string;
           dryRun?: boolean;
           nonInteractive?: boolean;

@@ -560,7 +560,20 @@ export function logShipEscalation(input: EscalationBlockInput): void {
     optionBlock(
       '[4]',
       'Re-run from a specific phase after fixing',
-      [`harness ship ${input.project} --resume --from ${input.phase}`],
+      [
+        `harness ship ${input.project}/${input.task} --resume --from ${input.phase}`,
+      ],
+      useColor,
+    ),
+  );
+  lines.push('');
+  lines.push(
+    optionBlock(
+      '[5]',
+      'Or resume via project mode from this task and phase',
+      [
+        `harness ship ${input.project} --resume --from ${input.task}/${input.phase}`,
+      ],
       useColor,
     ),
   );

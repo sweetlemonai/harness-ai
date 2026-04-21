@@ -10,8 +10,11 @@
 // Status handling (exact — no collapsing):
 //   CLEAN     → continue
 //   NOTE      → log issues as events, continue
-//   FIX       → send only the contradiction details to the coding agent;
-//               then re-run reconcile ONCE. If still FIX → escalate.
+//   FIX       → send the contradiction details to the coding agent and
+//               re-run reconcile. Repeat up to `config.retries.reconcile`
+//               fix attempts, feeding each attempt with the LATEST
+//               contradictions. If still FIX after budget → escalate.
+//               Budget 0 means escalate on first FIX without any fix pass.
 //   ESCALATE  → escalate immediately; no retry.
 //
 // Missing/invalid JSON block → AgentContractError → escalate (agent is
@@ -62,74 +65,85 @@ export const reconcilePhase: Phase<'reconcile'> = {
       };
     }
 
-    // First pass.
-    const first = await runReconcile(ctx, spec, 1, null);
+    const budget = ctx.config.retries.reconcile;
 
-    if (first.contract.status === 'CLEAN') {
-      return complete(startedAt, 'CLEAN', 0, first.contract.issues);
-    }
+    // Initial reconcile pass.
+    let current = await runReconcile(ctx, spec, 1, null);
+    let reconcileAttempt = 1;
+    let fixAttempts = 0;
 
-    if (first.contract.status === 'NOTE') {
-      logIssues(ctx, first.contract.issues, 'NOTE');
-      return complete(startedAt, 'NOTE', 0, first.contract.issues);
-    }
+    while (true) {
+      if (current.contract.status === 'CLEAN') {
+        return complete(startedAt, 'CLEAN', fixAttempts, current.contract.issues);
+      }
+      if (current.contract.status === 'NOTE') {
+        logIssues(ctx, current.contract.issues, 'NOTE');
+        return complete(startedAt, 'NOTE', fixAttempts, current.contract.issues);
+      }
+      if (current.contract.status === 'ESCALATE') {
+        throw escalate(
+          'reconciliation agent returned ESCALATE',
+          describeIssues(current.contract.issues),
+        );
+      }
 
-    if (first.contract.status === 'ESCALATE') {
-      throw escalate(
-        'reconciliation agent returned ESCALATE',
-        describeIssues(first.contract.issues),
+      // status === 'FIX'
+      if (fixAttempts >= budget) {
+        const reason =
+          budget === 0
+            ? 'reconciliation agent returned FIX (retries.reconcile=0, fix loop disabled)'
+            : `reconciliation still FIX after ${budget} fix attempt${budget === 1 ? '' : 's'}`;
+        throw escalate(reason, describeIssues(current.contract.issues));
+      }
+
+      logIssues(ctx, current.contract.issues, 'FIX');
+      const contradictions = current.contract.issues.filter((i) => i.kind === 'contradiction');
+      if (contradictions.length === 0) {
+        // FIX with no contradictions — nothing concrete to fix, escalate.
+        throw escalate(
+          'reconciliation agent returned FIX with no contradictions',
+          describeIssues(current.contract.issues),
+        );
+      }
+
+      const fixAttemptNumber = fixAttempts + 1; // 1-indexed
+      const fixPrompt = buildFixPrompt(ctx, spec, contradictions);
+      const fix = await callAgent({
+        ctx,
+        agent: 'coding.agent (reconcile fix)',
+        phase: 'reconcile-fix',
+        attempt: fixAttemptNumber,
+        prompt: fixPrompt,
+        timeoutMs: ctx.config.timeouts.otherAgentMs,
+      });
+      ctx.logger.event('correction_attempt', {
+        phase: 'reconcile',
+        attempt: fixAttemptNumber,
+        agentExitCode: fix.exitCode,
+        contradictionCount: contradictions.length,
+      });
+      if (fix.exitCode !== 0) {
+        throw escalate(
+          'coding agent exited non-zero during reconciliation fix',
+          (fix.stderr || fix.stdout).slice(-600),
+        );
+      }
+
+      reconcileAttempt += 1;
+      current = await runReconcile(
+        ctx,
+        spec,
+        reconcileAttempt,
+        current.contract.issues,
       );
-    }
+      fixAttempts += 1;
 
-    // status === 'FIX' — one targeted coding-agent pass, then re-reconcile once.
-    logIssues(ctx, first.contract.issues, 'FIX');
-    const contradictions = first.contract.issues.filter((i) => i.kind === 'contradiction');
-    if (contradictions.length === 0) {
-      // Unusual: FIX with no contradictions — escalate, nothing concrete to fix.
-      throw escalate(
-        'reconciliation agent returned FIX with no contradictions',
-        describeIssues(first.contract.issues),
-      );
+      ctx.logger.event('reconcile_fix_attempt', {
+        attempt: fixAttemptNumber,
+        budgetRemaining: budget - fixAttemptNumber,
+        status: current.contract.status,
+      });
     }
-
-    const fixPrompt = buildFixPrompt(ctx, spec, contradictions);
-    const fix = await callAgent({
-      ctx,
-      agent: 'coding.agent (reconcile fix)',
-      phase: 'reconcile',
-      attempt: 1,
-      prompt: fixPrompt,
-      timeoutMs: ctx.config.timeouts.otherAgentMs,
-    });
-    ctx.logger.event('correction_attempt', {
-      phase: 'reconcile',
-      attempt: 1,
-      agentExitCode: fix.exitCode,
-      contradictionCount: contradictions.length,
-    });
-    if (fix.exitCode !== 0) {
-      throw escalate(
-        'coding agent exited non-zero during reconciliation fix',
-        (fix.stderr || fix.stdout).slice(-600),
-      );
-    }
-
-    // Re-run reconcile ONCE.
-    const second = await runReconcile(ctx, spec, 2, first.contract.issues);
-
-    if (second.contract.status === 'CLEAN') {
-      return complete(startedAt, 'CLEAN', 1, second.contract.issues);
-    }
-    if (second.contract.status === 'NOTE') {
-      logIssues(ctx, second.contract.issues, 'NOTE');
-      return complete(startedAt, 'NOTE', 1, second.contract.issues);
-    }
-
-    // Still FIX (or ESCALATE) after the one allowed fix — escalate.
-    throw escalate(
-      `reconciliation still ${second.contract.status} after one fix attempt`,
-      describeIssues(second.contract.issues),
-    );
   },
 };
 
@@ -445,7 +459,7 @@ function escalate(reason: string, details: string): EscalationError {
     reason,
     details,
     humanAction:
-      'inspect runs/<id>/prompts/reconcile-attempt-*.txt; clarify the spec or fix the test/impl contradiction, then re-run with --from reconcile.',
+      'inspect runs/<id>/prompts/reconcile-attempt-*.txt and reconcile-fix-attempt-*.txt; clarify the spec or fix the test/impl contradiction, then re-run with --from reconcile.',
   };
   return new EscalationError(detail);
 }

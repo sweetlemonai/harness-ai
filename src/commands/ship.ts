@@ -36,10 +36,10 @@ import { resolve } from 'node:path';
 import {
   PHASE_IDS,
   STATE_SCHEMA_VERSION,
-  type PhaseId,
   type RunState,
 } from '../types.js';
 import { runCommand, type RunCommandArgs } from './run.js';
+import type { FromTarget } from '../lib/tasks.js';
 import { loadConfig } from '../lib/config.js';
 import { readProjectPullRequestResult } from '../lib/projectPr.js';
 import { resolveClaudeAsset, resolveHarnessPaths } from '../lib/paths.js';
@@ -61,7 +61,7 @@ export interface ShipCommandArgs {
   readonly resume: boolean;
   readonly skip?: string;
   readonly restart?: string;
-  readonly from?: PhaseId;
+  readonly from?: FromTarget;
   readonly dryRun: boolean;
   readonly nonInteractive: boolean;
   readonly force: boolean;

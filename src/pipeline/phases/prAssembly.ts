@@ -178,6 +178,7 @@ function buildPrompt(
     '- Section "## Quality Gates" — one line per hard gate (pass/fail/skip), plus visual diff if run.',
     '- Section "## Soft Gate Findings" — per-agent severity counts (the reports themselves live at runs/.../reports/).',
     '- Section "## Reconciliation Notes" — only when reconcile was FIX; otherwise omit.',
+    '- Section "## Automated fixes applied" — ONLY when BUILD OUTPUTS lists "automated fixes applied"; bullet each file with its kind and transform. Omit the section otherwise.',
     '- Section "## Skipped tasks" — ONLY when the SKIPPED TASKS block above lists one or more entries. Show each task name and note it was manually skipped (`skipped-by-human via harness ship --skip`). Omit the whole section when no tasks were skipped.',
     '- Final section "## Debug" — exact line:',
     `    ${debugCmd}`,
@@ -214,6 +215,12 @@ function summarizeBuild(build: BuildOutputs | undefined): string {
     lines.push(`no-touch observations:`);
     for (const v of build.noTouchViolations) {
       lines.push(`  - ${v.path} (${v.kind}): ${v.description}`);
+    }
+  }
+  if (build.autoFixes.length > 0) {
+    lines.push(`automated fixes applied:`);
+    for (const f of build.autoFixes) {
+      lines.push(`  - ${f.file} (${f.kind}: ${f.symbol}, transform ${f.transform})`);
     }
   }
   lines.push(`correction attempts: ${build.correctionAttempts}`);

@@ -22,11 +22,16 @@
     "retries": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["agent", "gate", "e2e"],
+      "required": ["agent", "gate", "e2e", "reconcile"],
       "properties": {
         "agent": { "type": "integer", "minimum": 0, "maximum": 10 },
         "gate": { "type": "integer", "minimum": 0, "maximum": 10 },
-        "e2e": { "type": "integer", "minimum": 0, "maximum": 10 }
+        "e2e": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "reconcile": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max fix attempts after reconcile reports FIX. 0 disables the fix loop (escalate immediately). Default 2."
+        }
       }
     },
     "timeouts": {

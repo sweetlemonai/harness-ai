@@ -20,10 +20,11 @@
 // any post-check fails after this phase completes, we escalate.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   EscalationError,
+  type BuildAutoFix,
   type BuildOutputs,
   type EscalationDetail,
   type ManifestEntry,
@@ -91,12 +92,31 @@ export const buildPhase: Phase<'build'> = {
       );
     }
 
-    const exportViolations = checkExportAlignment(ctx, spec);
+    let exportViolations = checkExportAlignment(ctx, spec);
+    const autoFixes: BuildAutoFix[] = [];
     if (exportViolations.length > 0) {
-      throw escalate(
-        'export alignment failed',
-        exportViolations.map((v) => `  - ${v}`).join('\n'),
-      );
+      const fixed = applyDoubleExportAutoFixes(ctx, spec);
+      for (const fix of fixed) {
+        autoFixes.push(fix);
+        ctx.logger.event('build_auto_fix', {
+          fix: 'double-export',
+          file: fix.file,
+          name: fix.symbol,
+          transform: fix.transform,
+        });
+        ctx.logger.info(
+          `build: auto-fix applied (double-export ${fix.transform}) → ${fix.file}`,
+        );
+      }
+      if (autoFixes.length > 0) {
+        exportViolations = checkExportAlignment(ctx, spec);
+      }
+      if (exportViolations.length > 0) {
+        throw escalate(
+          'export alignment failed',
+          enrichExportFailure(exportViolations, autoFixes),
+        );
+      }
     }
 
     const noTouchViolations = checkNoTouch(ctx, spec.manifestEntries);
@@ -116,6 +136,7 @@ export const buildPhase: Phase<'build'> = {
       filesWritten,
       noTouchViolations,
       correctionAttempts: 0,
+      autoFixes,
     };
 
     return {
@@ -332,14 +353,187 @@ function matchExportedSymbol(line: string): string | null {
 }
 
 function containsExport(fileContent: string, symbol: string): boolean {
-  const re = new RegExp(
-    `export\\s+(?:const|let|var|type|interface|function|class|enum|async\\s+function)\\s+${escapeRegex(symbol)}\\b`,
+  const escaped = escapeRegex(symbol);
+  const declRe = new RegExp(
+    `export\\s+(?:const|let|var|type|interface|function|class|enum|async\\s+function)\\s+${escaped}\\b`,
   );
-  return re.test(fileContent);
+  if (declRe.test(fileContent)) return true;
+  // `export { NAME }` / `export { NAME as Alias }` — the named-export form
+  // is valid iff NAME is declared somewhere in the file. We don't try to
+  // prove that here; if the build check fires on a file that contains
+  // both a declaration and a named-export line, the declaration match
+  // above already covered it. This branch handles files that stick to
+  // the named-export style and rely on a prior non-exported declaration.
+  const reExportRe = new RegExp(
+    `export\\s*\\{[^}]*\\b${escaped}\\b[^}]*\\}`,
+  );
+  return reExportRe.test(fileContent);
 }
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ---------------------------------------------------------------------------
+// Double-export auto-fix
+//
+// Catches the common agent mistake of emitting both `export default X`
+// and `export { X };` in the same file when the spec expects a named
+// export `X`. The re-export line refers to nothing in scope, so the
+// alignment check fails. Three transforms handle the usual variants:
+//
+//   A) `export default function X` + `export { X };`
+//      → `export function X` + drop re-export line
+//   B) `const X = ...; export default X;` + `export { X };`
+//      → `export const X = ...;` + drop both default + re-export lines
+//   C) `export default X;` + `export { X };` (X declared elsewhere in file)
+//      → drop just the default line; `export { X }` is recognized by
+//        containsExport above.
+//
+// If none of A/B/C matches cleanly, we skip the auto-fix and let the
+// original escalation fire (enriched with the suggestion).
+// ---------------------------------------------------------------------------
+
+function applyDoubleExportAutoFixes(
+  ctx: RunContext,
+  spec: SpecOutputs,
+): BuildAutoFix[] {
+  const declarations = parsePublicApi(readFileSafe(spec.specPath));
+  if (declarations.length === 0) return [];
+  const fixes: BuildAutoFix[] = [];
+  // Group declarations by file so we can apply multiple fixes to the
+  // same file in a single read/write round.
+  const byFile = new Map<string, string[]>();
+  for (const d of declarations) {
+    const list = byFile.get(d.file) ?? [];
+    list.push(d.symbol);
+    byFile.set(d.file, list);
+  }
+  for (const [file, symbols] of byFile) {
+    const abs = resolve(ctx.paths.repoRoot, file);
+    if (!existsSync(abs)) continue;
+    let content: string;
+    try {
+      content = readFileSync(abs, 'utf8');
+    } catch {
+      continue;
+    }
+    let fileChanged = false;
+    for (const symbol of symbols) {
+      if (containsExport(content, symbol)) continue;
+      const result = tryDoubleExportTransform(content, symbol);
+      if (result === null) continue;
+      content = result.content;
+      fileChanged = true;
+      fixes.push({
+        kind: 'double-export',
+        file,
+        symbol,
+        transform: result.transform,
+      });
+    }
+    if (fileChanged) {
+      try {
+        writeFileSync(abs, content, 'utf8');
+      } catch (err) {
+        ctx.logger.warn(
+          `build: auto-fix write failed for ${file}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+  return fixes;
+}
+
+interface DoubleExportTransformResult {
+  readonly content: string;
+  readonly transform: string;
+}
+
+export function tryDoubleExportTransform(
+  content: string,
+  name: string,
+): DoubleExportTransformResult | null {
+  const esc = escapeRegex(name);
+  const reExportRe = new RegExp(
+    `^[ \\t]*export\\s*\\{\\s*${esc}\\s*(?:,[^}]*)?\\}\\s*;?[ \\t]*\\r?\\n?`,
+    'm',
+  );
+  if (!reExportRe.test(content)) return null;
+
+  // Transform A: `export default function NAME` (possibly async) →
+  //              `export function NAME`
+  const defaultFnRe = new RegExp(
+    `(^|\\n)([ \\t]*)export\\s+default\\s+(async\\s+)?function\\s+${esc}\\b`,
+  );
+  const defaultFnMatch = defaultFnRe.exec(content);
+  if (defaultFnMatch) {
+    const asyncPrefix = defaultFnMatch[3] ?? '';
+    const replacement = `${defaultFnMatch[1] ?? ''}${defaultFnMatch[2] ?? ''}export ${asyncPrefix}function ${name}`;
+    let next = content.replace(defaultFnRe, replacement);
+    next = next.replace(reExportRe, '');
+    return { content: next, transform: 'A' };
+  }
+
+  // Transform B: `const NAME = ...` (not already exported) +
+  //              `export default NAME;` → `export const NAME = ...;`
+  //              Drop the `export default NAME;` and the re-export lines.
+  const constDeclRe = new RegExp(
+    `(^|\\n)([ \\t]*)(const|let|var)\\s+${esc}\\b`,
+  );
+  const defaultBareRe = new RegExp(
+    `^[ \\t]*export\\s+default\\s+${esc}\\s*;?[ \\t]*\\r?\\n?`,
+    'm',
+  );
+  const constMatch = constDeclRe.exec(content);
+  const defaultBareMatch = defaultBareRe.exec(content);
+  if (constMatch && defaultBareMatch) {
+    // Make sure the const isn't ALREADY exported (avoid double `export export`).
+    const before = content.slice(0, constMatch.index + (constMatch[1]?.length ?? 0));
+    const trailing = /export\s*$/.test(before);
+    if (!trailing) {
+      const newDecl = `${constMatch[1] ?? ''}${constMatch[2] ?? ''}export ${constMatch[3] ?? 'const'} ${name}`;
+      let next = content.replace(constDeclRe, newDecl);
+      next = next.replace(defaultBareRe, '');
+      next = next.replace(reExportRe, '');
+      return { content: next, transform: 'B' };
+    }
+  }
+
+  // Transform C: `export default NAME;` alone (no declaration to merge)
+  //              + `export { NAME };` where NAME is declared elsewhere.
+  //              Drop the default line; `export { NAME }` remains valid.
+  if (defaultBareMatch) {
+    const nameDeclaredElsewhere = new RegExp(
+      `(^|\\n)\\s*(?:function|class|const|let|var|type|interface|enum)\\s+${esc}\\b`,
+    ).test(content);
+    if (nameDeclaredElsewhere) {
+      const next = content.replace(defaultBareRe, '');
+      return { content: next, transform: 'C' };
+    }
+  }
+
+  return null;
+}
+
+function enrichExportFailure(
+  violations: readonly string[],
+  autoFixes: readonly BuildAutoFix[],
+): string {
+  const lines = violations.map((v) => `  - ${v}`);
+  if (autoFixes.length > 0) {
+    lines.push(
+      '',
+      `Auto-fix applied to ${autoFixes.length} file(s) but export alignment still fails:`,
+      ...autoFixes.map((f) => `  · ${f.file} (${f.symbol}, transform ${f.transform})`),
+    );
+  }
+  lines.push(
+    '',
+    'Common cause: the file declares both `export default X` and `export { X };` where `X` is not bound as a named export.',
+    'Fix by changing `export default function X` to `export function X` and deleting the `export { X };` line.',
+  );
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
