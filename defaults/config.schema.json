@@ -16,7 +16,15 @@
     "coreLibraries",
     "requirements",
     "git",
-    "phases"
+    "phases",
+    "models",
+    "protocol",
+    "rll",
+    "privacy",
+    "codegraph",
+    "proofs",
+    "interventions",
+    "production"
   ],
   "properties": {
     "retries": {
@@ -131,6 +139,330 @@
       "required": ["e2e"],
       "properties": {
         "e2e": { "type": "boolean" }
+      }
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultAdapter", "adapters"],
+      "properties": {
+        "defaultAdapter": { "type": "string", "minLength": 1 },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claude-cli",
+                  "fake-local",
+                  "openclaw-agent",
+                  "openai-compatible",
+                  "external"
+                ]
+              },
+              "command": { "type": "string", "minLength": 1 },
+              "agentId": { "type": "string", "minLength": 1 },
+              "baseUrl": { "type": "string", "minLength": 1 },
+              "baseUrlEnv": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "modelEnv": { "type": "string", "minLength": 1 },
+              "maxTokens": { "type": "integer", "minimum": 1 },
+              "apiKeyEnv": { "type": "string", "minLength": 1 },
+              "apiKey": { "type": "string", "minLength": 1 },
+              "privacyZone": {
+                "type": "string",
+                "enum": [
+                  "WORKSPACE",
+                  "LOCAL_ONLY",
+                  "HOSTED_REGIONAL",
+                  "ZDR_FRONTIER",
+                  "BLIND_SUBTASK",
+                  "SECRET_COMMITMENT_ONLY"
+                ]
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "bus", "receipts"],
+      "properties": {
+        "version": { "type": "string", "enum": ["2.0"] },
+        "bus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["store"],
+          "properties": {
+            "store": { "type": "string", "enum": ["jsonl"] }
+          }
+        },
+        "receipts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hashAlgorithm"],
+          "properties": {
+            "hashAlgorithm": { "type": "string", "enum": ["sha256"] }
+          }
+        }
+      }
+    },
+    "rll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "store", "hashChain", "emitControlSignals", "feedbackOscillation"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "store": { "type": "string", "enum": ["jsonl"] },
+        "hashChain": { "type": "boolean" },
+        "emitControlSignals": { "type": "boolean" },
+        "feedbackOscillation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minAlternations", "windowMs", "minStrength"],
+          "properties": {
+            "minAlternations": { "type": "integer", "minimum": 1 },
+            "windowMs": { "type": "integer", "minimum": 1000 },
+            "minStrength": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultZone", "preflight"],
+      "properties": {
+        "defaultZone": {
+          "type": "string",
+          "enum": [
+            "WORKSPACE",
+            "LOCAL_ONLY",
+            "HOSTED_REGIONAL",
+            "ZDR_FRONTIER",
+            "BLIND_SUBTASK",
+            "SECRET_COMMITMENT_ONLY"
+          ]
+        },
+        "preflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["blockHostedMissionGist", "blockHiddenReasoning"],
+          "properties": {
+            "blockHostedMissionGist": { "type": "boolean" },
+            "blockHiddenReasoning": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "codegraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "defaultProvider", "sidecarOnlyRefresh"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "defaultProvider": { "type": "string", "enum": ["gitnexus", "none"] },
+        "sidecarOnlyRefresh": { "type": "boolean" }
+      }
+    },
+    "proofs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signing", "zkSnarks"],
+      "properties": {
+        "signing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "provider", "trustLevel"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "local_ephemeral_ed25519",
+                "local_operator_file_ed25519",
+                "external"
+              ]
+            },
+            "trustLevel": {
+              "type": "string",
+              "enum": [
+                "self_signed",
+                "operator_bound",
+                "registry_verified",
+                "unknown"
+              ]
+            },
+            "privateKeyFile": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "timeoutMs": { "type": "integer", "minimum": 100 },
+            "fallbackSigners": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["command", "timeoutMs"],
+                "properties": {
+                  "command": { "type": "string", "minLength": 1 },
+                  "args": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "timeoutMs": { "type": "integer", "minimum": 100 },
+                  "keyId": { "type": "string", "minLength": 1 }
+                }
+              }
+            },
+            "failurePolicy": {
+              "type": "string",
+              "enum": ["halt", "degrade_to_unavailable"]
+            },
+            "keyId": { "type": "string", "minLength": 1 },
+            "expiresAt": { "type": "string", "format": "date-time" },
+            "revocationListRef": { "type": "string", "minLength": 1 },
+            "revokedKeyIds": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            }
+          }
+        },
+        "zkSnarks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "defaultBackend"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "defaultBackend": { "type": "string", "enum": ["mock_local", "external"] },
+            "command": { "type": "string", "minLength": 1 },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "timeoutMs": { "type": "integer", "minimum": 100 },
+            "maxOutputBytes": { "type": "integer", "minimum": 1024 },
+            "circuitId": { "type": "string", "minLength": 1 },
+            "circuitVersion": { "type": "string", "minLength": 1 },
+            "verifierRef": { "type": "string", "minLength": 1 },
+            "setupHash": { "type": "string", "minLength": 1 },
+            "maxLatencyMs": { "type": "integer", "minimum": 1 },
+            "failurePolicy": {
+              "type": "string",
+              "enum": ["fail_closed", "manual_hold", "degrade_to_signature_only_alpha"]
+            }
+          }
+        }
+      }
+    },
+    "interventions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "dryRunOnly"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "dryRunOnly": { "type": "boolean" }
+      }
+    },
+    "production": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fleet", "commandGroup", "council", "canary", "breakGlass"],
+      "properties": {
+        "fleet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["consensusV1ModelsUrls", "consensusV1CatalogFiles", "includeHosted"],
+          "properties": {
+            "configPath": { "type": "string", "minLength": 1 },
+            "v1ModelsUrl": { "type": "string", "minLength": 1 },
+            "v1CatalogFile": { "type": "string", "minLength": 1 },
+            "consensusV1ModelsUrls": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "consensusV1CatalogFiles": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "minAgreeingSources": { "type": "integer", "minimum": 2 },
+            "includeHosted": { "type": "boolean" }
+          }
+        },
+        "commandGroup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "requiredApprovals", "members"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "requiredApprovals": { "type": "integer", "minimum": 1 },
+            "members": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            }
+          }
+        },
+        "council": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minDissenters", "timeoutController"],
+          "properties": {
+            "minDissenters": { "type": "integer", "minimum": 1 },
+            "timeoutController": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["seedMs", "floorMs", "capMs", "stepUpMs", "stepDownMs", "disabled"],
+              "properties": {
+                "seedMs": { "type": "integer", "minimum": 1000 },
+                "floorMs": { "type": "integer", "minimum": 1000 },
+                "capMs": { "type": "integer", "minimum": 1000 },
+                "stepUpMs": { "type": "integer", "minimum": 0 },
+                "stepDownMs": { "type": "integer", "minimum": 0 },
+                "disabled": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "seedConcurrentTasks", "floorConcurrentTasks", "capConcurrentTasks", "stepUp"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "seedConcurrentTasks": { "type": "integer", "minimum": 1 },
+            "floorConcurrentTasks": { "type": "integer", "minimum": 1 },
+            "capConcurrentTasks": { "type": "integer", "minimum": 1 },
+            "stepUp": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "breakGlass": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxHours", "postHocGateDeadlineHours", "requireRollback"],
+          "properties": {
+            "maxHours": { "type": "number", "exclusiveMinimum": 0 },
+            "postHocGateDeadlineHours": { "type": "number", "exclusiveMinimum": 0 },
+            "requireRollback": { "type": "boolean" }
+          }
+        }
       }
     }
   }

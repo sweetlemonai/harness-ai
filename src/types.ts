@@ -91,6 +91,160 @@ export interface HarnessConfig {
   readonly phases: {
     readonly e2e: boolean;
   };
+  readonly models: {
+    readonly defaultAdapter: string;
+    readonly adapters: readonly {
+      readonly id: string;
+      readonly kind:
+        | 'claude-cli'
+        | 'fake-local'
+        | 'openclaw-agent'
+        | 'openai-compatible'
+        | 'external';
+      readonly command?: string;
+      readonly args?: readonly string[];
+      readonly agentId?: string;
+      readonly baseUrl?: string;
+      readonly baseUrlEnv?: string;
+      readonly model?: string;
+      readonly modelEnv?: string;
+      readonly maxTokens?: number;
+      readonly apiKeyEnv?: string;
+      readonly apiKey?: string;
+      readonly privacyZone?:
+        | 'WORKSPACE'
+        | 'LOCAL_ONLY'
+        | 'HOSTED_REGIONAL'
+        | 'ZDR_FRONTIER'
+        | 'BLIND_SUBTASK'
+        | 'SECRET_COMMITMENT_ONLY';
+    }[];
+  };
+  readonly protocol: {
+    readonly version: '2.0';
+    readonly bus: {
+      readonly store: 'jsonl';
+    };
+    readonly receipts: {
+      readonly hashAlgorithm: 'sha256';
+    };
+  };
+  readonly rll: {
+    readonly enabled: boolean;
+    readonly store: 'jsonl';
+    readonly hashChain: boolean;
+    readonly emitControlSignals: boolean;
+    readonly feedbackOscillation: {
+      readonly minAlternations: number;
+      readonly windowMs: number;
+      readonly minStrength: number;
+    };
+  };
+  readonly privacy: {
+    readonly defaultZone:
+      | 'WORKSPACE'
+      | 'LOCAL_ONLY'
+      | 'HOSTED_REGIONAL'
+      | 'ZDR_FRONTIER'
+      | 'BLIND_SUBTASK'
+      | 'SECRET_COMMITMENT_ONLY';
+    readonly preflight: {
+      readonly blockHostedMissionGist: boolean;
+      readonly blockHiddenReasoning: boolean;
+    };
+  };
+  readonly codegraph: {
+    readonly enabled: boolean;
+    readonly defaultProvider: 'gitnexus' | 'none';
+    readonly sidecarOnlyRefresh: boolean;
+  };
+  readonly proofs: {
+    readonly signing: {
+      readonly enabled: boolean;
+      readonly provider:
+        | 'disabled'
+        | 'local_ephemeral_ed25519'
+        | 'local_operator_file_ed25519'
+        | 'external';
+      readonly trustLevel:
+        | 'self_signed'
+        | 'operator_bound'
+        | 'registry_verified'
+        | 'unknown';
+      readonly privateKeyFile?: string;
+      readonly command?: string;
+      readonly args?: readonly string[];
+      readonly timeoutMs?: number;
+      readonly fallbackSigners?: readonly {
+        readonly command: string;
+        readonly args?: readonly string[];
+        readonly timeoutMs: number;
+        readonly keyId?: string;
+      }[];
+      readonly failurePolicy?: 'halt' | 'degrade_to_unavailable';
+      readonly keyId?: string;
+      readonly expiresAt?: string;
+      readonly revocationListRef?: string;
+      readonly revokedKeyIds?: readonly string[];
+    };
+    readonly zkSnarks: {
+      readonly enabled: boolean;
+      readonly defaultBackend: 'mock_local' | 'external';
+      readonly command?: string;
+      readonly args?: readonly string[];
+      readonly timeoutMs?: number;
+      readonly maxOutputBytes?: number;
+      readonly circuitId?: string;
+      readonly circuitVersion?: string;
+      readonly verifierRef?: string;
+      readonly setupHash?: string;
+      readonly maxLatencyMs?: number;
+      readonly failurePolicy?: 'fail_closed' | 'manual_hold' | 'degrade_to_signature_only_alpha';
+    };
+  };
+  readonly interventions: {
+    readonly enabled: boolean;
+    readonly dryRunOnly: boolean;
+  };
+  readonly production: {
+    readonly fleet: {
+      readonly configPath?: string;
+      readonly v1ModelsUrl?: string;
+      readonly v1CatalogFile?: string;
+      readonly consensusV1ModelsUrls: readonly string[];
+      readonly consensusV1CatalogFiles: readonly string[];
+      readonly minAgreeingSources?: number;
+      readonly includeHosted: boolean;
+    };
+    readonly commandGroup: {
+      readonly enabled: boolean;
+      readonly requiredApprovals: number;
+      readonly members: readonly string[];
+    };
+    readonly council: {
+      readonly minDissenters: number;
+      readonly timeoutController: {
+        readonly seedMs: number;
+        readonly floorMs: number;
+        readonly capMs: number;
+        readonly stepUpMs: number;
+        readonly stepDownMs: number;
+        readonly disabled: boolean;
+      };
+    };
+    readonly canary: {
+      readonly enabled: boolean;
+      readonly seedConcurrentTasks: number;
+      readonly floorConcurrentTasks: number;
+      readonly capConcurrentTasks: number;
+      readonly stepUp: number;
+    };
+    readonly breakGlass: {
+      readonly maxHours: number;
+      readonly postHocGateDeadlineHours: number;
+      readonly requireRollback: boolean;
+    };
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +306,274 @@ export interface RunPaths {
   readonly promptsDir: string;
   readonly outputsDir: string;
   readonly reportsDir: string;
+  readonly protocolDir: string;
+  readonly evidenceDir: string;
+  readonly receiptsDir: string;
+  readonly rllDir: string;
+  readonly codegraphDir: string;
+  readonly protocolMessagesFile: string;
+  readonly protocolReceiptsFile: string;
+  readonly evidenceFile: string;
+  readonly rllFile: string;
+  readonly agentopsEventsFile: string;
+  readonly rsiIndexFile: string;
+}
+
+// ---------------------------------------------------------------------------
+// Super Harness v2 protocol primitives
+// ---------------------------------------------------------------------------
+
+export const PROTOCOL_VERSION_V2 = '2.0' as const;
+export const PROTOCOL_CANONICALIZATION_VERSION = 'json-c14n.v1' as const;
+export const RLL_EVENT_SCHEMA_VERSION = 'rll.event.v2' as const;
+
+export const PRIVACY_ZONES = [
+  'LOCAL_ONLY',
+  'HOSTED_REGIONAL',
+  'ZDR_FRONTIER',
+  'BLIND_SUBTASK',
+  'WORKSPACE',
+  'SECRET_COMMITMENT_ONLY',
+] as const;
+export type PrivacyZone = (typeof PRIVACY_ZONES)[number];
+
+export type Visibility = 'operator_visible' | 'internal' | 'secret_commitment_only';
+
+export interface AgentIdentity {
+  readonly agentId: string;
+  readonly kind:
+    | 'codex'
+    | 'claude'
+    | 'local_model'
+    | 'cloud_model'
+    | 'spark_agent'
+    | 'human'
+    | 'legacy_adapter'
+    | 'system';
+  readonly displayName?: string;
+  readonly nodeId?: string;
+}
+
+export interface AgentRecipient {
+  readonly agentId: string;
+  readonly inboxUri?: string;
+  readonly required: boolean;
+}
+
+export interface ScopeRef {
+  readonly scopeId: string;
+  readonly runId: string;
+  readonly workspaceId: string;
+  readonly tenantId?: string;
+  readonly tenantMode: boolean;
+  readonly privacyZone: PrivacyZone;
+  readonly visibility: Visibility;
+}
+
+export interface SignatureStatus {
+  readonly status: 'unsigned' | 'signed' | 'unavailable' | 'invalid';
+  readonly algorithm?: string;
+  readonly signature?: string;
+  readonly publicKeyRef?: string;
+  readonly reason?: string;
+}
+
+export type EvidenceKind =
+  | 'file'
+  | 'command'
+  | 'http'
+  | 'model_output'
+  | 'implementation_conflict'
+  | 'adapter_recovery'
+  | 'receipt'
+  | 'signature'
+  | 'proof'
+  | 'instrumentation_proof'
+  | 'instrumentation_missing'
+  | 'human_observation'
+  | 'external_record';
+
+export interface EvidenceRef {
+  readonly evidenceId: string;
+  readonly kind: EvidenceKind;
+  readonly uri: string;
+  readonly sha256?: string;
+  readonly contentType?: string;
+  readonly producedBy: AgentIdentity;
+  readonly observedAt: string;
+  readonly command?: readonly string[];
+  readonly exitCode?: number;
+  readonly lineStart?: number;
+  readonly lineEnd?: number;
+  readonly retentionPolicy?: string;
+}
+
+export interface ClaimV2 {
+  readonly claimId: string;
+  readonly kind: 'observation' | 'inference' | 'speculation' | 'unknown' | 'decision';
+  readonly statement: string;
+  readonly confidence?: number;
+  readonly evidenceRefs: readonly string[];
+  readonly disconfirmingCondition?: string;
+  readonly author: AgentIdentity;
+  readonly createdAt: string;
+  readonly status: 'draft' | 'supported' | 'challenged' | 'retracted' | 'accepted';
+}
+
+export type ReceiptKind =
+  | 'sent'
+  | 'delivered'
+  | 'undeliverable'
+  | 'read'
+  | 'accepted'
+  | 'rejected'
+  | 'completed'
+  | 'failed'
+  | 'challenged'
+  | 'verified'
+  | 'conflict_recorded'
+  | 'instrumentation_missing'
+  | 'proof_unavailable';
+
+export interface ReceiptV2 {
+  readonly receiptId: string;
+  readonly kind: ReceiptKind;
+  readonly subjectId: string;
+  readonly issuer: AgentIdentity;
+  readonly recipient?: AgentIdentity;
+  readonly issuedAt: string;
+  readonly evidenceRefs: readonly EvidenceRef[];
+  readonly previousReceiptId?: string;
+  readonly signature: SignatureStatus;
+}
+
+export type MessageIntent =
+  | 'task.request'
+  | 'question'
+  | 'answer'
+  | 'observation'
+  | 'inference'
+  | 'speculation'
+  | 'artifact'
+  | 'review.request'
+  | 'review.finding'
+  | 'challenge'
+  | 'decision'
+  | 'cancel'
+  | 'heartbeat'
+  | 'receipt.notice';
+
+export interface MessageBody {
+  readonly contentType: string;
+  readonly text?: string;
+  readonly json?: unknown;
+  readonly artifactRefs?: readonly EvidenceRef[];
+}
+
+export interface ExternalRef {
+  readonly system: string;
+  readonly uri: string;
+  readonly label?: string;
+}
+
+export interface MessageEnvelopeV2 {
+  readonly protocolVersion: typeof PROTOCOL_VERSION_V2;
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly runId?: string;
+  readonly scope: ScopeRef;
+  readonly tenantId?: string;
+  readonly taskRef?: string;
+  readonly createdAt: string;
+  readonly privacyZone: PrivacyZone;
+  readonly visibility: Visibility;
+  readonly sender: AgentIdentity;
+  readonly recipients: readonly AgentRecipient[];
+  readonly intent: MessageIntent;
+  readonly body: MessageBody;
+  readonly claims: readonly ClaimV2[];
+  readonly evidenceRefs: readonly EvidenceRef[];
+  readonly requiredReceipts: readonly ReceiptKind[];
+  readonly deadline?: string;
+  readonly idempotencyKey: string;
+  readonly externalRefs: readonly ExternalRef[];
+  readonly signature: SignatureStatus;
+}
+
+export interface PrivacyDecision {
+  readonly decisionId: string;
+  readonly subjectId: string;
+  readonly tenantId: string;
+  readonly zone: PrivacyZone;
+  readonly payloadClassification:
+    | 'public'
+    | 'workspace'
+    | 'tenant_private'
+    | 'legal_ip_strategy'
+    | 'credentials_or_keys'
+    | 'mission_gist'
+    | 'blind_abstracted'
+    | 'hash_or_commitment_only';
+  readonly preflightResult: 'allowed' | 'blocked' | 'requires_operator_gate';
+  readonly policyRef: EvidenceRef;
+  readonly evidenceRefs: readonly string[];
+  readonly overrideReceiptId?: string;
+}
+
+export interface RLLEvent {
+  readonly eventId: string;
+  readonly schemaVersion: typeof RLL_EVENT_SCHEMA_VERSION;
+  readonly runId: string;
+  readonly tenantId?: string;
+  readonly nodeId: string;
+  readonly threadId?: string;
+  readonly timestamp: string;
+  readonly eventType: string;
+  readonly actor: AgentIdentity;
+  readonly subjectType:
+    | 'run'
+    | 'task'
+    | 'agent'
+    | 'adapter'
+    | 'route'
+    | 'handoff'
+    | 'claim'
+    | 'evidence'
+    | 'dissent'
+    | 'privacy'
+    | 'proof'
+    | 'operator_gate'
+    | 'artifact';
+  readonly subjectId: string;
+  readonly payloadSummary: string;
+  readonly payloadRef?: EvidenceRef;
+  readonly privacyZone: PrivacyZone;
+  readonly scope: ScopeRef;
+  readonly receiptRefs: readonly string[];
+  readonly claimRefs: readonly string[];
+  readonly evidenceRefs: readonly string[];
+  readonly prevHash?: string;
+  readonly hash: string;
+  readonly visibility: Visibility;
+}
+
+export interface VerificationIssue {
+  readonly severity: 'info' | 'warning' | 'error';
+  readonly code: string;
+  readonly message: string;
+  readonly subjectId?: string;
+  readonly line?: number;
+}
+
+export interface VerificationReport {
+  readonly ok: boolean;
+  readonly subject: string;
+  readonly checkedAt: string;
+  readonly headHash?: string;
+  readonly issueCount: number;
+  readonly issues: readonly VerificationIssue[];
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +921,11 @@ export const EVENT_TYPES = [
   'lock_released',
   'reconcile_fix_attempt',
   'build_auto_fix',
+  'protocol_ref',
+  'receipt_ref',
+  'evidence_ref',
+  'rll_ref',
+  'codegraph_ref',
   'info',
   'warn',
   'error',

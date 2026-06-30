@@ -36,13 +36,24 @@ import { resolve } from 'node:path';
 import {
   PHASE_IDS,
   STATE_SCHEMA_VERSION,
+  type EventType,
+  type HarnessConfig,
+  type Logger,
+  type RunContext,
   type RunState,
 } from '../types.js';
 import { runCommand, type RunCommandArgs } from './run.js';
 import type { FromTarget } from '../lib/tasks.js';
 import { loadConfig } from '../lib/config.js';
 import { readProjectPullRequestResult } from '../lib/projectPr.js';
-import { resolveClaudeAsset, resolveHarnessPaths } from '../lib/paths.js';
+import {
+  resolveClaudeAsset,
+  resolveHarnessPaths,
+  resolveRunId,
+  resolveRunPaths,
+  resolveTaskPaths,
+  sanitizeBranch,
+} from '../lib/paths.js';
 import { sumTaskTokens } from '../lib/logger.js';
 import {
   logShipEscalation,
@@ -50,6 +61,7 @@ import {
   type ShippedTaskSummary,
 } from '../lib/logger.js';
 import { readStateIfExists } from '../lib/state.js';
+import { callAgent } from '../lib/claude.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -407,10 +419,10 @@ function slugifyIssueTitle(title: string): string | null {
 }
 
 /**
- * Invoke the task-breaker agent by spawning the `claude` CLI with the
- * agent prompt + brief content. Returns true on success. Failures are
- * logged but non-fatal so the user can run the agent by hand and then
- * re-invoke `harness ship` with the generated task files in place.
+ * Invoke the task-breaker agent through the configured model registry.
+ * Returns true on success. Failures are logged but non-fatal so the user
+ * can run the agent by hand and then re-invoke `harness ship` with the
+ * generated task files in place.
  */
 async function runTaskBreaker(
   input: ResolvedShipInput,
@@ -442,19 +454,21 @@ async function runTaskBreaker(
   // When the e2e phase is globally disabled, tell the agent up front —
   // otherwise it generates an e2e task that the pipeline will skip,
   // leaving acceptance criteria uncovered.
+  let config: HarnessConfig;
   let e2eDisabledNote = '';
   try {
-    const config = loadConfig(paths);
+    config = loadConfig(paths);
     if (!config.phases.e2e) {
       e2eDisabledNote =
         'IMPORTANT: config.phases.e2e is false. Do not create any tasks of ' +
         'type: e2e. Fold E2E test requirements into the acceptance criteria ' +
         'of the relevant component or integration task instead.';
     }
-  } catch {
-    // If config can't be loaded here, let the downstream pipeline surface
-    // it — planning shouldn't fail on a config error this ship might
-    // never reach.
+  } catch (err) {
+    process.stderr.write(
+      `ship: cannot load harness config for task-breaker model routing: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return false;
   }
 
   const prompt = [
@@ -471,31 +485,29 @@ async function runTaskBreaker(
     ...(e2eDisabledNote ? ['', e2eDisabledNote] : []),
   ].join('\n');
 
-  const ghCheck = spawnSync('claude', ['--version'], { encoding: 'utf8' });
-  if (ghCheck.status !== 0) {
+  process.stdout.write(`ship: planning ${project} via task-breaker agent through the model registry…\n`);
+  const ctx = createTaskBreakerContext(paths, config, project);
+  try {
+    const result = await callAgent({
+      ctx,
+      agent: 'task-breaker.agent',
+      phase: 'task-breaker',
+      attempt: 1,
+      prompt,
+      timeoutMs: config.timeouts.otherAgentMs,
+    });
+    if (result.exitCode !== 0) {
+      process.stderr.write(
+        `ship: task-breaker agent exited ${result.exitCode}\n`,
+      );
+      return false;
+    }
+  } catch (err) {
     process.stderr.write(
-      `ship: 'claude' CLI not available — cannot plan ${project} automatically.\n`,
+      `ship: task-breaker agent failed through model registry: ${err instanceof Error ? err.message : String(err)}\n`,
     );
     process.stderr.write(
       `  Run the task-breaker agent manually with the brief at ${briefFile}, then re-invoke 'harness ship ${project}'.\n`,
-    );
-    return false;
-  }
-
-  process.stdout.write(`ship: planning ${project} via task-breaker agent…\n`);
-  const res = spawnSync(
-    'claude',
-    ['--dangerously-skip-permissions', '-p'],
-    {
-      cwd: paths.repoRoot,
-      input: prompt,
-      encoding: 'utf8',
-      stdio: ['pipe', 'inherit', 'inherit'],
-    },
-  );
-  if (res.status !== 0) {
-    process.stderr.write(
-      `ship: task-breaker agent exited ${res.status ?? 'unknown'}\n`,
     );
     return false;
   }
@@ -506,6 +518,59 @@ async function runTaskBreaker(
     return false;
   }
   return true;
+}
+
+function createTaskBreakerContext(
+  paths: ReturnType<typeof resolveHarnessPaths>,
+  config: HarnessConfig,
+  project: string,
+): RunContext {
+  const taskRef = { project, task: 'task-breaker' };
+  const taskPaths = resolveTaskPaths(paths, taskRef);
+  const runPaths = resolveRunPaths(taskPaths, resolveRunId());
+  return {
+    config,
+    paths,
+    taskPaths,
+    runPaths,
+    logger: taskBreakerLogger(),
+    task: taskRef,
+    branch: sanitizeBranch(taskRef, runPaths.runId),
+    taskFrontmatter: {
+      type: 'logic',
+      hasDesign: false,
+      project,
+      depends: [],
+    },
+    capabilities: null,
+    outputs: {},
+    flags: {
+      resume: false,
+      patchParent: null,
+      nonInteractive: false,
+      dryRun: false,
+    },
+    shuttingDown: () => false,
+  };
+}
+
+function taskBreakerLogger(): Logger {
+  return {
+    info: (message: string) => {
+      process.stdout.write(`${message}\n`);
+    },
+    warn: (message: string) => {
+      process.stderr.write(`warning: ${message}\n`);
+    },
+    error: (message: string) => {
+      process.stderr.write(`${message}\n`);
+    },
+    success: (message: string) => {
+      process.stdout.write(`${message}\n`);
+    },
+    event: (_type: EventType, _fields: Record<string, unknown>) => undefined,
+    close: async () => undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------

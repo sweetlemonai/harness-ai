@@ -229,6 +229,17 @@ export function resolveRunPaths(
     promptsDir: resolve(runDir, 'prompts'),
     outputsDir: resolve(runDir, 'outputs'),
     reportsDir: resolve(runDir, 'reports'),
+    protocolDir: resolve(runDir, 'protocol'),
+    evidenceDir: resolve(runDir, 'evidence'),
+    receiptsDir: resolve(runDir, 'receipts'),
+    rllDir: resolve(runDir, 'rll'),
+    codegraphDir: resolve(runDir, 'codegraph'),
+    protocolMessagesFile: resolve(runDir, 'protocol', 'messages.jsonl'),
+    protocolReceiptsFile: resolve(runDir, 'protocol', 'receipts.jsonl'),
+    evidenceFile: resolve(runDir, 'evidence', 'evidence.jsonl'),
+    rllFile: resolve(runDir, 'rll', 'events.jsonl'),
+    agentopsEventsFile: resolve(runDir, 'agentops.events.jsonl'),
+    rsiIndexFile: resolve(runDir, 'rsi.index.json'),
   };
 }
 

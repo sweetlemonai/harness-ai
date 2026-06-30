@@ -1,5 +1,12 @@
 node_modules/
 dist/
+tmp/
+harness/config.local.json
+harness/fleet/*.snapshot.json
+harness/fleet/local-production-fleet.json
+harness/proof/*.pem
+harness/proof/local-external-zk-prover.mjs
+harness/proof/revocations.json
 *.log
 *.tgz
 .DS_Store

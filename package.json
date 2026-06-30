@@ -31,6 +31,7 @@
   "files": [
     "dist",
     "defaults",
+    "docs",
     "README.md",
     "MIGRATION.md"
   ],
@@ -40,6 +41,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "HARNESS_IGNORE_LOCAL_CONFIG=1 node --loader ./test/ts-js-loader.mjs --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build",
     "harness": "tsx src/cli.ts"

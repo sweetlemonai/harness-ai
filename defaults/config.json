@@ -41,5 +41,119 @@
   },
   "phases": {
     "e2e": true
+  },
+  "models": {
+    "defaultAdapter": "claude-cli-v1",
+    "adapters": [
+      {
+        "id": "claude-cli-v1",
+        "kind": "claude-cli",
+        "command": "claude",
+        "args": ["--dangerously-skip-permissions", "-p"]
+      },
+      {
+        "id": "fake-local-v1",
+        "kind": "fake-local"
+      },
+      {
+        "id": "veri-forge-v1",
+        "kind": "openclaw-agent",
+        "command": "openclaw",
+        "agentId": "forge"
+      },
+      {
+        "id": "local-openai-compatible-v1",
+        "kind": "openai-compatible",
+        "baseUrlEnv": "HARNESS_OPENAI_COMPAT_BASE_URL",
+        "modelEnv": "HARNESS_OPENAI_COMPAT_MODEL",
+        "apiKeyEnv": "HARNESS_OPENAI_COMPAT_API_KEY"
+      }
+    ]
+  },
+  "protocol": {
+    "version": "2.0",
+    "bus": {
+      "store": "jsonl"
+    },
+    "receipts": {
+      "hashAlgorithm": "sha256"
+    }
+  },
+  "rll": {
+    "enabled": true,
+    "store": "jsonl",
+    "hashChain": true,
+    "emitControlSignals": true,
+    "feedbackOscillation": {
+      "minAlternations": 2,
+      "windowMs": 300000,
+      "minStrength": 0.7
+    }
+  },
+  "privacy": {
+    "defaultZone": "WORKSPACE",
+    "preflight": {
+      "blockHostedMissionGist": true,
+      "blockHiddenReasoning": true
+    }
+  },
+  "codegraph": {
+    "enabled": true,
+    "defaultProvider": "gitnexus",
+    "sidecarOnlyRefresh": true
+  },
+  "proofs": {
+    "signing": {
+      "enabled": false,
+      "provider": "disabled",
+      "trustLevel": "unknown"
+    },
+    "zkSnarks": {
+      "enabled": false,
+      "defaultBackend": "mock_local",
+      "timeoutMs": 10000,
+      "maxOutputBytes": 1048576,
+      "maxLatencyMs": 5000,
+      "failurePolicy": "fail_closed"
+    }
+  },
+  "interventions": {
+    "enabled": false,
+    "dryRunOnly": true
+  },
+  "production": {
+    "fleet": {
+      "consensusV1ModelsUrls": [],
+      "consensusV1CatalogFiles": [],
+      "includeHosted": false
+    },
+    "commandGroup": {
+      "enabled": false,
+      "requiredApprovals": 2,
+      "members": []
+    },
+    "council": {
+      "minDissenters": 2,
+      "timeoutController": {
+        "seedMs": 120000,
+        "floorMs": 30000,
+        "capMs": 180000,
+        "stepUpMs": 30000,
+        "stepDownMs": 15000,
+        "disabled": false
+      }
+    },
+    "canary": {
+      "enabled": false,
+      "seedConcurrentTasks": 1,
+      "floorConcurrentTasks": 1,
+      "capConcurrentTasks": 5,
+      "stepUp": 1
+    },
+    "breakGlass": {
+      "maxHours": 4,
+      "postHocGateDeadlineHours": 24,
+      "requireRollback": true
+    }
   }
 }

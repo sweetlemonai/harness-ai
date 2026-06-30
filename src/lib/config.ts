@@ -26,7 +26,7 @@ export function loadConfig(paths: HarnessPaths): HarnessConfig {
   const repoOverrides = existsSync(paths.configFile)
     ? readJsonFile(paths.configFile, 'harness/config.json')
     : null;
-  const localOverrides = existsSync(paths.configLocalFile)
+  const localOverrides = !ignoreLocalConfig() && existsSync(paths.configLocalFile)
     ? readJsonFile(paths.configLocalFile, 'harness/config.local.json')
     : null;
 
@@ -108,6 +108,11 @@ function deepMergeObjects(base: JsonObject, overlay: JsonObject): JsonObject {
     }
   }
   return out;
+}
+
+function ignoreLocalConfig(): boolean {
+  const value = process.env.HARNESS_IGNORE_LOCAL_CONFIG;
+  return value === '1' || value === 'true';
 }
 
 // ---------------------------------------------------------------------------
